@@ -1,56 +1,34 @@
-# app/services.py
 import os
 import json
 from apify_client import ApifyClient
-from app.database import SupabaseContextManager
 from google import genai
 from google.genai import types
 
 class TrendService:
-    def __init__(self, api_token: str):
-        if not api_token:
-            raise ValueError("No Apify Token provided.")
-        self.client = ApifyClient(api_token)
-        self.db = SupabaseContextManager()
+    def __init__(self):
+        self.apify_client = ApifyClient(os.getenv("APIFY_API_KEY"))
         self.ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-    def sync_to_dummy(self, query: str = "AI SaaS trends 2026"):
+    def get_raw_feeds(self):
+        """Triggers the manju4k 6-in-1 scraper with corrected platform names."""
         run_input = {
-            "platforms": [
-                "instagram",
-                "youtube",
-                "reddit",
-                "twitter",
-            ],
-            "region": "IN",
-            "timeRange": "4h",
-            "maxTrends": 25,
-            "includeMetrics": False,
-            "enableComparison": False,
-            "comparisonType": "comprehensive",
+            # IMPORTANT: Use "twitter", NOT "x"
+            "platforms": ["twitter", "instagram", "reddit", "youtube"], 
+            "region": "US",
+            "timeRange": "24h",
+            "maxTrends": 10,
+            "includeMetrics": False # Set to False to keep the data clean for Gemini
         }
-        print(f"📡 Scraping raw data for: {query}...")
-        run = self.client.actor("manju4k/social-media-trend-scraper-6-in-1-ai-analysis").call(run_input=run_input)
-        
-        raw_items = list(self.client.dataset(run["defaultDatasetId"]).iterate_items())
-        
-        if not raw_items:
-            print("Apify returned no items.")
-            return None
-        
-        print(f"Gemini is cleaning {len(raw_items)} raw items...")
-        cleaned_trends = self._clean_data_with_gemini(raw_items)
 
-        if cleaned_trends:
-            print(f"Inserting {len(cleaned_trends)} structured trends into Supabase...")
-            return self.db.supabase.table("dummy_trending_topics").insert(cleaned_trends).execute()
-        
-        return None
+        print("📡 Triggering Apify with corrected platform names...")
+        # This line was crashing because of the input above
+        run = self.apify_client.actor("manju4k/social-media-trend-scraper-6-in-1-ai-analysis").call(run_input=run_input)
     
-    # app/services.py (Updated for UI-Ready Data)
+        dataset = self.apify_client.dataset(run["defaultDatasetId"])
+        return list(dataset.iterate_items())
 
-    def _clean_data_with_gemini(self, raw_data: list):
-        # Strict schema for App Store UI consistency
+    def clean_trends(self, raw_data: list):
+        """Gemini translates raw scrapings into our iOS-ready schema with elaborate context."""
         response_schema = {
             "type": "object",
             "properties": {
@@ -59,46 +37,40 @@ class TrendService:
                     "items": {
                         "type": "object",
                         "properties": {
+                            "source": {"type": "string", "enum": ["X", "LinkedIn", "Reddit", "YouTube"]},
                             "topic_name": {"type": "string"},
-                            "short_description": {"type": "string", "description": "A punchy 1-sentence summary."},
+                            "short_description": {"type": "string"},
+                            "trending_context": {
+                                "type": "string", 
+                                "description": "An elaborate 2-3 sentence explanation of the 'Why' behind the trend, including specific catalysts or debate points."
+                            },
                             "platform_icon": {
                                 "type": "string", 
-                                "enum": ["icon-x", "icon-instagram", "icon-linkedin"], # Strict UI mapping
-                                "description": "Choose the most relevant platform for this trend."
+                                "enum": ["icon-instagram", "icon-x", "icon-linkedin"] # Corrected platform names
                             },
-                            "hashtags": {
-                                "type": "array", 
-                                "items": {"type": "string"},
-                                "minItems": 2, 
-                                "maxItems": 2 # Enforces exactly two hashtags
-                            },
-                            "sector": {"type": "string"}
+                            "hashtags": {"type": "array", "items": {"type": "string"}}
                         },
-                        "required": ["topic_name", "short_description", "platform_icon", "hashtags"]
+                        "required": ["source", "topic_name", "trending_context", "platform_icon"]
                     }
                 }
             }
         }
 
         prompt = f"""
-        Analyze these raw social media trends. 
-        1. Extract the top 5 high-signal topics for personal branding.
-        2. Map them to 'icon-x', 'icon-instagram', or 'icon-linkedin'.
-        3. Generate exactly 2 relevant hashtags for each.
-        4. Keep descriptions under 50 characters for mobile cards, keep words short they should fit in two lines in a short card.
-        5. Keep the post title also about 30 characters.
+        Analyze these raw social media trends for a personal branding app: {json.dumps(raw_data[:10])}.
         
-        Raw Data: {json.dumps(raw_data[:12])}
+        TASK:
+        1. Extract the top 5 highest-signal trends for professional branding.
+        2. The 'trending_context' MUST be elaborate: explain the specific catalyst (e.g., a new policy, a viral tweet, or a market shift) and the core tension/debate currently happening.
+        3. Ensure 'platform_icon' strictly follows the enum: icon-instagram, icon-x, or icon-linkedin.
         """
 
         response = self.ai_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-lite",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=response_schema
             )
         )
-        
-        structured_output = json.loads(response.text)
-        return structured_output.get("trends", [])
+        return json.loads(response.text).get("trends", [])
