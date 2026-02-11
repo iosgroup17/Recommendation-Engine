@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) throw new Error('Unauthorized')
 
-    // 1. Fetch the industry from onboarding_responses (Step Index 2)
+    // Fetch the industry from onboarding_responses (Step Index 2)
     const { data: onboardingData, error: onboardingError } = await supabase
       .from('onboarding_responses')
       .select('selection_tags')
@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     // selection_tags is an array, so we take the first choice
     const userNiche = onboardingData?.selection_tags?.[0] || 'Technology & Software'
 
-    // 2. Query only trends matching that specific industry name
+    // Query only trends matching that specific industry name
     const { data: trends, error: dbError } = await supabase
       .from('trending_topics')
       .select('*')

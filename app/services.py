@@ -24,7 +24,10 @@ class TrendService:
         ]
         
         for industry in industries:
-            print(f"🚀 Processing Industry: {industry}")
+            print(f"Processing Industry: {industry}")
+
+            print(f"Clearing old entries for {industry}...")
+            self.db.supabase.table("trending_topics").delete().eq("category", industry).execute()
             
             run_input = {
                 "search": industry,
