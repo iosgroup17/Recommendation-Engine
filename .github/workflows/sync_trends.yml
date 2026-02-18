@@ -25,8 +25,8 @@ jobs:
       - name: Run Industry Sync
         env:
           # Injects your secret keys into the environment
-          APIFY_API_KEY=: ${{ secrets.APIFY_API_KEY }}
+          APIFY_API_KEY: ${{ secrets.APIFY_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python main.py
