@@ -2,7 +2,7 @@ name: Global Scout Sync
 
 on:
   schedule:
-    - cron: '0 0 */2 * *'
+    - cron: '0 0 */10 * *'
   workflow_dispatch:
 
 jobs:
